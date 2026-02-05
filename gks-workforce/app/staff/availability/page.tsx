@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, query, where, getDocs, Timestamp, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, Timestamp, updateDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { TimeRange, Availability } from '@/types';
 import { getWeekStart, getDayName, formatDate, SHOP_OPEN_TIME, SHOP_CLOSE_TIME, isTimeBefore } from '@/lib/utils';
 import { useNotification } from '@/contexts/NotificationContext';
@@ -117,35 +117,39 @@ export default function StaffAvailabilityPage() {
 
         try {
             const weekStart = Timestamp.fromDate(selectedWeek);
+            const weekStartStr = selectedWeek.toISOString().split('T')[0];
 
-            // Delete existing availability for this week
-            const q = query(
-                collection(db, 'availability'),
-                where('staffId', '==', userData.id),
-                where('weekStartDate', '==', weekStart)
-            );
-            const snapshot = await getDocs(q);
-            const deletePromises = snapshot.docs.map((d) => updateDoc(doc(db, 'availability', d.id), { status: 'SUBMITTED' }));
-            await Promise.all(deletePromises);
+            // Use deterministic IDs to prevent duplicates and handle deletions
+            const promises = [];
 
-            // Add new availability
-            const addPromises = Object.entries(availability).map(([dayOfWeek, timeRanges]) => {
-                if (timeRanges.length === 0) return Promise.resolve();
+            // We iterate 0-6 to ensure we handle all days in the week
+            for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+                const dayId = `${userData.id}_${weekStartStr}_${dayOfWeek}`;
+                const docRef = doc(db, 'availability', dayId);
+                const dayRanges = availability[dayOfWeek] || [];
 
-                return addDoc(collection(db, 'availability'), {
-                    staffId: userData.id,
-                    weekStartDate: weekStart,
-                    dayOfWeek: parseInt(dayOfWeek),
-                    timeRanges,
-                    isRecurring,
-                    status: 'SUBMITTED',
-                    submittedAt: Timestamp.now(),
-                    createdAt: Timestamp.now(),
-                    updatedAt: Timestamp.now(),
-                });
-            });
+                if (dayRanges.length > 0) {
+                    // Update or create
+                    promises.push(setDoc(docRef, {
+                        staffId: userData.id,
+                        weekStartDate: weekStart,
+                        dayOfWeek,
+                        timeRanges: dayRanges,
+                        isRecurring,
+                        status: 'SUBMITTED',
+                        submittedAt: Timestamp.now(),
+                        updatedAt: Timestamp.now(),
+                        // Only set createdAt if it's a new document? 
+                        // Actually setDoc with merge: true is an option, but we want to overwrite timeRanges anyway.
+                        createdAt: Timestamp.now(),
+                    }));
+                } else {
+                    // Remove if exists
+                    promises.push(deleteDoc(docRef));
+                }
+            }
 
-            await Promise.all(addPromises);
+            await Promise.all(promises);
 
             showNotification('Availability submitted successfully!', 'success');
         } catch (error) {

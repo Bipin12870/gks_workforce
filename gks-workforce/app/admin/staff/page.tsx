@@ -22,6 +22,12 @@ export default function AdminStaffPage() {
         password: '',
         hourlyRate: 25,
     });
+    const [editingStaff, setEditingStaff] = useState<User | null>(null);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editFormData, setEditFormData] = useState({
+        name: '',
+        hourlyRate: 0,
+    });
     const { showNotification } = useNotification();
 
     useEffect(() => {
@@ -114,6 +120,39 @@ export default function AdminStaffPage() {
             console.error('Error updating hourly rate:', error);
             showNotification('Failed to update hourly rate', 'error');
         }
+    };
+
+    const handleUpdateStaff = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingStaff) return;
+
+        try {
+            setLoading(true);
+            await updateDoc(doc(db, 'users', editingStaff.id), {
+                name: editFormData.name,
+                hourlyRate: editFormData.hourlyRate,
+                updatedAt: Timestamp.now(),
+            });
+
+            showNotification('Staff updated successfully!', 'success');
+            setShowEditModal(false);
+            setEditingStaff(null);
+            loadStaff();
+        } catch (error: any) {
+            console.error('Error updating staff:', error);
+            showNotification(error.message || 'Failed to update staff', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const openEditModal = (member: User) => {
+        setEditingStaff(member);
+        setEditFormData({
+            name: member.name,
+            hourlyRate: member.hourlyRate,
+        });
+        setShowEditModal(true);
     };
 
     return (
@@ -285,12 +324,20 @@ export default function AdminStaffPage() {
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <button
-                                                        onClick={() => toggleStaffStatus(member.id, member.isActive)}
-                                                        className={member.isActive ? 'btn-ghost-danger' : 'btn-ghost-primary'}
-                                                    >
-                                                        {member.isActive ? 'Deactivate' : 'Activate'}
-                                                    </button>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => openEditModal(member)}
+                                                            className="text-blue-600 hover:text-blue-700 font-medium px-2 py-1"
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={() => toggleStaffStatus(member.id, member.isActive)}
+                                                            className={`font-medium px-2 py-1 ${member.isActive ? 'text-red-600 hover:text-red-700' : 'text-green-600 hover:text-green-700'}`}
+                                                        >
+                                                            {member.isActive ? 'Deactivate' : 'Activate'}
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -300,6 +347,63 @@ export default function AdminStaffPage() {
                         </div>
                     )}
                 </main>
+
+                {/* Edit Modal */}
+                {showEditModal && editingStaff && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+                            <h2 className="text-xl font-bold text-gray-900 mb-4">Edit Staff: {editingStaff.name}</h2>
+                            <form onSubmit={handleUpdateStaff} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Full Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editFormData.name}
+                                        onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                                        required
+                                        className="input-base"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Hourly Rate ($)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={editFormData.hourlyRate}
+                                        onChange={(e) => setEditFormData({ ...editFormData, hourlyRate: parseFloat(e.target.value) })}
+                                        required
+                                        min="0"
+                                        step="0.01"
+                                        className="input-base"
+                                    />
+                                </div>
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                                    <p className="font-semibold mb-1">🔐 Password Editing</p>
+                                    <p>Passwords cannot be directly changed here for security. Please use the Firebase Console to reset passwords for staff accounts.</p>
+                                </div>
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowEditModal(false)}
+                                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition font-medium"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+                                        disabled={loading}
+                                    >
+                                        {loading ? 'Saving...' : 'Save Changes'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
             </div>
         </ProtectedRoute>
     );
