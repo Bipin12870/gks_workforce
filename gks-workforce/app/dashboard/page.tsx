@@ -29,7 +29,7 @@ export default function DashboardPage() {
                                 <Logo width={110} height={36} />
                                 <div className="border-l border-gray-200 pl-4 sm:pl-6">
                                     <h1 className="hidden sm:block text-lg font-bold text-gray-900 tracking-tight">Workforce</h1>
-                                    <p className="text-[10px] sm:text-xs text-gray-500 font-medium whitespace-nowrap">Signed in as {userData?.name}</p>
+                                    <p className="text-[10px] sm:text-xs text-gray-500 font-medium whitespace-nowrap">Hi {userData?.name}</p>
                                 </div>
                             </div>
                             <button
