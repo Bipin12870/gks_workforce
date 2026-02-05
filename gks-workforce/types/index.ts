@@ -6,6 +6,7 @@ export interface User {
     id: string;
     name: string;
     email: string;
+    username?: string; // Optional field for staff
     role: UserRole;
     hourlyRate: number;
     isActive: boolean;
@@ -45,6 +46,19 @@ export interface Shift {
     approvedBy: string; // Admin user ID
     approvedAt: Timestamp;
     createdAt: Timestamp;
+    updatedAt?: Timestamp;
+    updatedBy?: string;
+}
+
+export interface RosterAuditLog {
+    id?: string;
+    adminId: string;
+    shiftId: string;
+    staffId: string;
+    action: 'EDIT' | 'REMOVE';
+    previousData?: Partial<Shift>;
+    newData?: Partial<Shift>;
+    timestamp: Timestamp;
 }
 
 export interface TimeRecord {

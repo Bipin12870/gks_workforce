@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, Timestamp } from 'firebase/firestore';
 import { Shift } from '@/types';
-import { getWeekStart, getDayName, formatDate } from '@/lib/utils';
+import { getWeekStart, getDayName, formatDate, calculateHours } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 
 export default function StaffRosterPage() {
@@ -17,7 +17,7 @@ export default function StaffRosterPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!userData) return;
+        if (!userData || userData.role !== 'STAFF') return;
 
         // Calculate week range
         const weekStart = new Date(selectedWeek);
@@ -98,6 +98,24 @@ export default function StaffRosterPage() {
                             </button>
                         </div>
                     </div>
+
+                    {/* Summary Cards */}
+                    {!loading && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <div className="bg-white rounded-xl shadow-sm border p-6">
+                                <p className="text-sm text-gray-600 mb-1">Weekly Hours (Approved)</p>
+                                <p className="text-3xl font-bold text-gray-900">
+                                    {shifts.reduce((sum, s) => sum + calculateHours(s.startTime, s.endTime), 0).toFixed(2)}
+                                </p>
+                            </div>
+                            <div className="bg-white rounded-xl shadow-sm border p-6">
+                                <p className="text-sm text-gray-600 mb-1">Projected Gross Pay</p>
+                                <p className="text-3xl font-bold text-green-600">
+                                    ${(shifts.reduce((sum, s) => sum + calculateHours(s.startTime, s.endTime), 0) * (userData?.hourlyRate || 0)).toFixed(2)}
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Loading State */}
                     {loading && (

@@ -10,12 +10,6 @@ export function getWeekStart(date: Date): Date {
     return monday;
 }
 
-/**
- * Format time as HH:mm
- */
-export function formatTime(hours: number, minutes: number): string {
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-}
 
 /**
  * Parse HH:mm time string to hours and minutes

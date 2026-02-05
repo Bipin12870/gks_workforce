@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, query, where, getDocs, updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { TimeRecord } from '@/types';
@@ -13,7 +14,7 @@ export default function ClockInOutPage() {
     const router = useRouter();
     const [activeRecord, setActiveRecord] = useState<TimeRecord | null>(null);
     const [loading, setLoading] = useState(true);
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const { showNotification } = useNotification();
 
     useEffect(() => {
         checkActiveClockIn();
@@ -40,7 +41,6 @@ export default function ClockInOutPage() {
         if (!userData) return;
 
         setLoading(true);
-        setMessage(null);
 
         try {
             const docRef = await addDoc(collection(db, 'timeRecords'), {
@@ -52,11 +52,11 @@ export default function ClockInOutPage() {
                 updatedAt: Timestamp.now(),
             });
 
-            setMessage({ type: 'success', text: 'Clocked in successfully!' });
+            showNotification('Clocked in successfully!', 'success');
             await checkActiveClockIn();
         } catch (error) {
             console.error('Error clocking in:', error);
-            setMessage({ type: 'error', text: 'Failed to clock in. Please try again.' });
+            showNotification('Failed to clock in. Please try again.', 'error');
         } finally {
             setLoading(false);
         }
@@ -66,7 +66,6 @@ export default function ClockInOutPage() {
         if (!userData || !activeRecord) return;
 
         setLoading(true);
-        setMessage(null);
 
         try {
             const clockOutTime = Timestamp.now();
@@ -81,11 +80,11 @@ export default function ClockInOutPage() {
                 updatedAt: Timestamp.now(),
             });
 
-            setMessage({ type: 'success', text: `Clocked out successfully! Worked ${hoursWorked.toFixed(2)} hours` });
+            showNotification(`Clocked out successfully! Worked ${hoursWorked.toFixed(2)} hours`, 'success');
             setActiveRecord(null);
         } catch (error) {
             console.error('Error clocking out:', error);
-            setMessage({ type: 'error', text: 'Failed to clock out. Please try again.' });
+            showNotification('Failed to clock out. Please try again.', 'error');
         } finally {
             setLoading(false);
         }
@@ -99,18 +98,6 @@ export default function ClockInOutPage() {
                         <h1 className="text-3xl font-bold text-gray-900 mb-2">Time Clock</h1>
                         <p className="text-gray-600">Welcome, {userData?.name}</p>
                     </div>
-
-                    {/* Message */}
-                    {message && (
-                        <div
-                            className={`mb-6 px-4 py-3 rounded-lg text-center ${message.type === 'success'
-                                ? 'bg-green-50 border border-green-200 text-green-700'
-                                : 'bg-red-50 border border-red-200 text-red-700'
-                                }`}
-                        >
-                            {message.text}
-                        </div>
-                    )}
 
                     {/* Loading State */}
                     {loading ? (
@@ -139,7 +126,7 @@ export default function ClockInOutPage() {
 
                             <button
                                 onClick={handleClockOut}
-                                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-4 px-6 rounded-xl text-lg transition"
+                                className="btn-danger py-4 text-lg"
                             >
                                 Clock Out
                             </button>
@@ -153,7 +140,7 @@ export default function ClockInOutPage() {
 
                             <button
                                 onClick={handleClockIn}
-                                className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-4 px-6 rounded-xl text-lg transition"
+                                className="btn-primary py-4 text-lg"
                             >
                                 Clock In
                             </button>
@@ -162,7 +149,7 @@ export default function ClockInOutPage() {
 
                     <button
                         onClick={() => router.push('/dashboard')}
-                        className="w-full mt-6 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-xl border border-gray-300 transition"
+                        className="btn-secondary mt-6"
                     >
                         Back to Dashboard
                     </button>

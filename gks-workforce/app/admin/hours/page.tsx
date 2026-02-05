@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { TimeRecord, User } from '@/types';
+import { Shift, User } from '@/types';
 import { getWeekStart, formatDate } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+import { useNotification } from '@/contexts/NotificationContext';
 
 export default function AdminHoursPage() {
     const router = useRouter();
@@ -14,6 +15,7 @@ export default function AdminHoursPage() {
     const [staffHours, setStaffHours] = useState<Record<string, { hours: number; pay: number }>>({});
     const [staffMap, setStaffMap] = useState<Record<string, User>>({});
     const [loading, setLoading] = useState(true);
+    const { showNotification } = useNotification();
 
     useEffect(() => {
         loadData();
@@ -22,44 +24,52 @@ export default function AdminHoursPage() {
     const loadData = async () => {
         setLoading(true);
 
-        // Load staff
-        const staffSnapshot = await getDocs(collection(db, 'users'));
-        const map: Record<string, User> = {};
-        staffSnapshot.forEach((doc) => {
-            const data = doc.data();
-            if (data.role === 'STAFF') {
-                map[doc.id] = { id: doc.id, ...data } as User;
-            }
-        });
-        setStaffMap(map);
+        try {
+            // Load staff
+            const staffSnapshot = await getDocs(collection(db, 'users'));
+            const map: Record<string, User> = {};
+            staffSnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (data.role === 'STAFF') {
+                    map[doc.id] = { id: doc.id, ...data } as User;
+                }
+            });
+            setStaffMap(map);
 
-        // Load time records for the week
-        const weekStart = new Date(selectedWeek);
-        const weekEnd = new Date(selectedWeek);
-        weekEnd.setDate(weekEnd.getDate() + 7);
+            // Load shifts for the week
+            const weekStart = new Date(selectedWeek);
+            const weekEnd = new Date(selectedWeek);
+            weekEnd.setDate(weekEnd.getDate() + 7);
 
-        const q = query(
-            collection(db, 'timeRecords'),
-            where('clockInTime', '>=', Timestamp.fromDate(weekStart)),
-            where('clockInTime', '<', Timestamp.fromDate(weekEnd))
-        );
+            const q = query(
+                collection(db, 'shifts'),
+                where('date', '>=', Timestamp.fromDate(weekStart)),
+                where('date', '<', Timestamp.fromDate(weekEnd)),
+                where('status', '==', 'APPROVED')
+            );
 
-        const snapshot = await getDocs(q);
-        const hours: Record<string, { hours: number; pay: number }> = {};
+            const snapshot = await getDocs(q);
+            const hours: Record<string, { hours: number; pay: number }> = {};
+            const { calculateHours } = await import('@/lib/utils');
 
-        snapshot.forEach((doc) => {
-            const record = doc.data() as TimeRecord;
-            if (!hours[record.staffId]) {
-                hours[record.staffId] = { hours: 0, pay: 0 };
-            }
-            const hoursWorked = record.hoursWorked || 0;
-            const hourlyRate = map[record.staffId]?.hourlyRate || 0;
-            hours[record.staffId].hours += hoursWorked;
-            hours[record.staffId].pay += hoursWorked * hourlyRate;
-        });
+            snapshot.forEach((doc) => {
+                const shift = doc.data() as Shift;
+                if (!hours[shift.staffId]) {
+                    hours[shift.staffId] = { hours: 0, pay: 0 };
+                }
+                const duration = calculateHours(shift.startTime, shift.endTime);
+                const hourlyRate = map[shift.staffId]?.hourlyRate || 0;
+                hours[shift.staffId].hours += duration;
+                hours[shift.staffId].pay += duration * hourlyRate;
+            });
 
-        setStaffHours(hours);
-        setLoading(false);
+            setStaffHours(hours);
+        } catch (error) {
+            console.error('Error loading data:', error);
+            showNotification('Failed to load hours data. Please try again.', 'error');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const changeWeek = (direction: 'prev' | 'next') => {
@@ -80,7 +90,7 @@ export default function AdminHoursPage() {
                         <div>
                             <button
                                 onClick={() => router.push('/dashboard')}
-                                className="text-blue-600 hover:text-blue-700 text-sm font-medium mb-2"
+                                className="btn-ghost-primary mb-2"
                             >
                                 ← Back to Dashboard
                             </button>

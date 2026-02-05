@@ -7,7 +7,9 @@ import { db } from '@/lib/firebase';
 import { collection, addDoc, query, where, getDocs, Timestamp, updateDoc, doc } from 'firebase/firestore';
 import { TimeRange, Availability } from '@/types';
 import { getWeekStart, getDayName, formatDate } from '@/lib/utils';
+import { useNotification } from '@/contexts/NotificationContext';
 import { useRouter } from 'next/navigation';
+import Logo from '@/components/Logo';
 
 export default function StaffAvailabilityPage() {
     const { userData } = useAuth();
@@ -16,7 +18,7 @@ export default function StaffAvailabilityPage() {
     const [availability, setAvailability] = useState<Record<number, TimeRange[]>>({});
     const [isRecurring, setIsRecurring] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const { showNotification } = useNotification();
 
     // Load existing availability for the week
     useEffect(() => {
@@ -91,14 +93,13 @@ export default function StaffAvailabilityPage() {
         });
 
         setAvailability(copiedAvailability);
-        setMessage({ type: 'success', text: 'Copied availability from last week' });
+        showNotification('Copied availability from last week', 'success');
     };
 
     const handleSubmit = async () => {
         if (!userData) return;
 
         setLoading(true);
-        setMessage(null);
 
         try {
             const weekStart = Timestamp.fromDate(selectedWeek);
@@ -132,10 +133,10 @@ export default function StaffAvailabilityPage() {
 
             await Promise.all(addPromises);
 
-            setMessage({ type: 'success', text: 'Availability submitted successfully!' });
+            showNotification('Availability submitted successfully!', 'success');
         } catch (error) {
             console.error('Error submitting availability:', error);
-            setMessage({ type: 'error', text: 'Failed to submit availability. Please try again.' });
+            showNotification('Failed to submit availability. Please try again.', 'error');
         } finally {
             setLoading(false);
         }
@@ -154,14 +155,17 @@ export default function StaffAvailabilityPage() {
                 <header className="bg-white shadow-sm border-b">
                     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                         <div className="flex items-center justify-between">
-                            <div>
-                                <button
-                                    onClick={() => router.push('/dashboard')}
-                                    className="text-blue-600 hover:text-blue-700 text-sm font-medium mb-2"
-                                >
-                                    ← Back to Dashboard
-                                </button>
-                                <h1 className="text-2xl font-bold text-gray-900">My Availability</h1>
+                            <div className="flex items-center gap-4">
+                                <Logo width={100} height={35} />
+                                <div className="border-l pl-4">
+                                    <button
+                                        onClick={() => router.push('/dashboard')}
+                                        className="text-blue-600 hover:text-blue-700 text-sm font-medium mb-1 block"
+                                    >
+                                        ← Back
+                                    </button>
+                                    <h1 className="text-xl font-bold text-gray-900">My Availability</h1>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -208,17 +212,7 @@ export default function StaffAvailabilityPage() {
                         </div>
                     </div>
 
-                    {/* Message */}
-                    {message && (
-                        <div
-                            className={`mb-6 px-4 py-3 rounded-lg ${message.type === 'success'
-                                    ? 'bg-green-50 border border-green-200 text-green-700'
-                                    : 'bg-red-50 border border-red-200 text-red-700'
-                                }`}
-                        >
-                            {message.text}
-                        </div>
-                    )}
+                    {/* Days */}
 
                     {/* Days */}
                     <div className="space-y-4">
@@ -233,18 +227,18 @@ export default function StaffAvailabilityPage() {
                                                 type="time"
                                                 value={range.start}
                                                 onChange={(e) => updateTimeRange(dayOfWeek, index, 'start', e.target.value)}
-                                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                                             />
                                             <span className="text-gray-500">to</span>
                                             <input
                                                 type="time"
                                                 value={range.end}
                                                 onChange={(e) => updateTimeRange(dayOfWeek, index, 'end', e.target.value)}
-                                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                                             />
                                             <button
                                                 onClick={() => removeTimeRange(dayOfWeek, index)}
-                                                className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition"
+                                                className="btn-ghost-danger"
                                             >
                                                 Remove
                                             </button>
@@ -253,7 +247,7 @@ export default function StaffAvailabilityPage() {
 
                                     <button
                                         onClick={() => addTimeRange(dayOfWeek)}
-                                        className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition"
+                                        className="btn-ghost-primary border border-blue-200"
                                     >
                                         + Add Time Range
                                     </button>
@@ -267,7 +261,7 @@ export default function StaffAvailabilityPage() {
                         <button
                             onClick={handleSubmit}
                             disabled={loading}
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="btn-primary py-4 text-lg"
                         >
                             {loading ? 'Submitting...' : 'Submit Availability'}
                         </button>

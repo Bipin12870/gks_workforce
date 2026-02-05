@@ -5,22 +5,22 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { TimeRecord } from '@/types';
-import { getWeekStart, formatDate } from '@/lib/utils';
+import { Shift } from '@/types';
+import { getWeekStart, formatDate, calculateHours } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 
 export default function StaffHoursPage() {
     const { userData } = useAuth();
     const router = useRouter();
     const [selectedWeek, setSelectedWeek] = useState<Date>(getWeekStart(new Date()));
-    const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([]);
+    const [shifts, setShifts] = useState<Shift[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        loadTimeRecords();
+        loadShifts();
     }, [selectedWeek, userData]);
 
-    const loadTimeRecords = async () => {
+    const loadShifts = async () => {
         if (!userData) return;
 
         setLoading(true);
@@ -30,19 +30,27 @@ export default function StaffHoursPage() {
         weekEnd.setDate(weekEnd.getDate() + 7);
 
         const q = query(
-            collection(db, 'timeRecords'),
+            collection(db, 'shifts'),
             where('staffId', '==', userData.id),
-            where('clockInTime', '>=', Timestamp.fromDate(weekStart)),
-            where('clockInTime', '<', Timestamp.fromDate(weekEnd))
+            where('date', '>=', Timestamp.fromDate(weekStart)),
+            where('date', '<', Timestamp.fromDate(weekEnd)),
+            where('status', '==', 'APPROVED')
         );
 
         const snapshot = await getDocs(q);
-        const records: TimeRecord[] = [];
+        const loadedShifts: Shift[] = [];
         snapshot.forEach((doc) => {
-            records.push({ id: doc.id, ...doc.data() } as TimeRecord);
+            loadedShifts.push({ id: doc.id, ...doc.data() } as Shift);
         });
 
-        setTimeRecords(records);
+        // Sort by date and then start time
+        loadedShifts.sort((a, b) => {
+            const dateDiff = a.date.toMillis() - b.date.toMillis();
+            if (dateDiff !== 0) return dateDiff;
+            return a.startTime.localeCompare(b.startTime);
+        });
+
+        setShifts(loadedShifts);
         setLoading(false);
     };
 
@@ -52,7 +60,7 @@ export default function StaffHoursPage() {
         setSelectedWeek(getWeekStart(newWeek));
     };
 
-    const totalHours = timeRecords.reduce((sum, record) => sum + (record.hoursWorked || 0), 0);
+    const totalHours = shifts.reduce((sum, shift) => sum + calculateHours(shift.startTime, shift.endTime), 0);
     const grossPay = totalHours * (userData?.hourlyRate || 0);
 
     return (
@@ -64,12 +72,12 @@ export default function StaffHoursPage() {
                         <div>
                             <button
                                 onClick={() => router.push('/dashboard')}
-                                className="text-blue-600 hover:text-blue-700 text-sm font-medium mb-2"
+                                className="btn-ghost-primary mb-2"
                             >
                                 ← Back to Dashboard
                             </button>
                             <h1 className="text-2xl font-bold text-gray-900">Hours & Pay</h1>
-                            <p className="text-sm text-gray-600">View your worked hours and gross pay</p>
+                            <p className="text-sm text-gray-600">View your approved shifts and gross pay</p>
                         </div>
                     </div>
                 </header>
@@ -100,7 +108,7 @@ export default function StaffHoursPage() {
                     {/* Summary Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                         <div className="bg-white rounded-xl shadow-sm border p-6">
-                            <p className="text-sm text-gray-600 mb-1">Total Hours</p>
+                            <p className="text-sm text-gray-600 mb-1">Weekly Hours</p>
                             <p className="text-3xl font-bold text-gray-900">{totalHours.toFixed(2)}</p>
                         </div>
                         <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -120,48 +128,40 @@ export default function StaffHoursPage() {
                         </div>
                     )}
 
-                    {/* Time Records */}
+                    {/* Shift Records */}
                     {!loading && (
                         <div className="bg-white rounded-xl shadow-sm border">
                             <div className="p-6 border-b">
-                                <h3 className="text-lg font-semibold text-gray-900">Time Records</h3>
+                                <h3 className="text-lg font-semibold text-gray-900">Approved Shifts</h3>
+                                <p className="text-xs text-gray-500 mt-1">Based on rostered times</p>
                             </div>
                             <div className="divide-y">
-                                {timeRecords.length === 0 ? (
-                                    <p className="p-6 text-gray-500 text-sm">No time records for this week</p>
+                                {shifts.length === 0 ? (
+                                    <p className="p-6 text-gray-500 text-sm">No approved shifts for this week</p>
                                 ) : (
-                                    timeRecords.map((record) => (
-                                        <div key={record.id} className="p-6 flex items-center justify-between">
-                                            <div>
-                                                <p className="font-medium text-gray-900">
-                                                    {formatDate(record.clockInTime.toDate())}
-                                                </p>
-                                                <p className="text-sm text-gray-600">
-                                                    {record.clockInTime.toDate().toLocaleTimeString('en-US', {
-                                                        hour: '2-digit',
-                                                        minute: '2-digit',
-                                                    })}{' '}
-                                                    -{' '}
-                                                    {record.clockOutTime
-                                                        ? record.clockOutTime.toDate().toLocaleTimeString('en-US', {
-                                                            hour: '2-digit',
-                                                            minute: '2-digit',
-                                                        })
-                                                        : 'In Progress'}
-                                                </p>
+                                    shifts.map((shift) => {
+                                        const hours = calculateHours(shift.startTime, shift.endTime);
+                                        return (
+                                            <div key={shift.id} className="p-6 flex items-center justify-between">
+                                                <div>
+                                                    <p className="font-medium text-gray-900">
+                                                        {formatDate(shift.date.toDate())}
+                                                    </p>
+                                                    <p className="text-sm text-gray-600">
+                                                        {shift.startTime} - {shift.endTime}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="font-semibold text-gray-900">
+                                                        {hours.toFixed(2)} hrs
+                                                    </p>
+                                                    <p className="text-sm text-gray-600">
+                                                        ${(hours * (userData?.hourlyRate || 0)).toFixed(2)}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <div className="text-right">
-                                                <p className="font-semibold text-gray-900">
-                                                    {record.hoursWorked ? `${record.hoursWorked.toFixed(2)} hrs` : '-'}
-                                                </p>
-                                                <p className="text-sm text-gray-600">
-                                                    {record.hoursWorked
-                                                        ? `$${(record.hoursWorked * (userData?.hourlyRate || 0)).toFixed(2)}`
-                                                        : '-'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </div>
                         </div>

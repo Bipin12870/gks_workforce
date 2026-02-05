@@ -3,6 +3,7 @@
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import Logo from '@/components/Logo';
 
 export default function DashboardPage() {
     const { userData, logout } = useAuth();
@@ -24,9 +25,12 @@ export default function DashboardPage() {
                 <header className="bg-white shadow-sm border-b">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                         <div className="flex justify-between items-center">
-                            <div>
-                                <h1 className="text-2xl font-bold text-gray-900">GKS Workforce</h1>
-                                <p className="text-sm text-gray-600">Welcome, {userData?.name}</p>
+                            <div className="flex items-center gap-4">
+                                <Logo width={120} height={40} />
+                                <div className="border-l pl-4">
+                                    <h1 className="text-xl font-bold text-gray-900">Workforce</h1>
+                                    <p className="text-sm text-gray-600">Welcome, {userData?.name}</p>
+                                </div>
                             </div>
                             <button
                                 onClick={handleLogout}

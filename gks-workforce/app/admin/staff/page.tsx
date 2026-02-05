@@ -2,11 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { db, auth } from '@/lib/firebase';
-import { collection, addDoc, getDocs, updateDoc, doc, Timestamp } from 'firebase/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { db, auth, firebaseConfig } from '@/lib/firebase';
+import { collection, setDoc, getDocs, updateDoc, doc, Timestamp } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, getAuth } from 'firebase/auth';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { useNotification } from '@/contexts/NotificationContext';
 import { User } from '@/types';
 import { useRouter } from 'next/navigation';
+import Logo from '@/components/Logo';
 
 export default function AdminStaffPage() {
     const router = useRouter();
@@ -15,11 +18,11 @@ export default function AdminStaffPage() {
     const [loading, setLoading] = useState(true);
     const [formData, setFormData] = useState({
         name: '',
-        email: '',
+        username: '',
         password: '',
         hourlyRate: 25,
     });
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const { showNotification } = useNotification();
 
     useEffect(() => {
         loadStaff();
@@ -40,20 +43,31 @@ export default function AdminStaffPage() {
 
     const handleCreateStaff = async (e: React.FormEvent) => {
         e.preventDefault();
-        setMessage(null);
 
         try {
-            // Create Firebase Auth user
+            // Construct dummy email for staff username
+            const dummyEmail = `${formData.username.trim()}@gks.internal`;
+
+            // Create a secondary Firebase app to create the user without signing out the admin
+            const tempAppName = `temp-app-${Date.now()}`;
+            const tempApp = initializeApp(firebaseConfig, tempAppName);
+            const tempAuth = getAuth(tempApp);
+
+            // Create Firebase Auth user using the temporary auth instance
             const userCredential = await createUserWithEmailAndPassword(
-                auth,
-                formData.email,
+                tempAuth,
+                dummyEmail,
                 formData.password
             );
 
-            // Create Firestore user document
-            await addDoc(collection(db, 'users'), {
+            const newUser = userCredential.user;
+
+            // Create Firestore user document using the main db instance
+            // We use setDoc with the UID as the document ID to ensure isOwner rules work
+            await setDoc(doc(db, 'users', newUser.uid), {
                 name: formData.name,
-                email: formData.email,
+                email: dummyEmail,
+                username: formData.username.trim(),
                 role: 'STAFF',
                 hourlyRate: formData.hourlyRate,
                 isActive: true,
@@ -61,13 +75,16 @@ export default function AdminStaffPage() {
                 updatedAt: Timestamp.now(),
             });
 
-            setMessage({ type: 'success', text: 'Staff account created successfully!' });
-            setFormData({ name: '', email: '', password: '', hourlyRate: 25 });
+            // Clean up the temporary app
+            await deleteApp(tempApp);
+
+            showNotification('Staff account created successfully!', 'success');
+            setFormData({ name: '', username: '', password: '', hourlyRate: 25 });
             setShowCreateForm(false);
             loadStaff();
         } catch (error: any) {
             console.error('Error creating staff:', error);
-            setMessage({ type: 'error', text: error.message || 'Failed to create staff account' });
+            showNotification(error.message || 'Failed to create staff account', 'error');
         }
     };
 
@@ -78,13 +95,10 @@ export default function AdminStaffPage() {
                 updatedAt: Timestamp.now(),
             });
             loadStaff();
-            setMessage({
-                type: 'success',
-                text: `Staff ${!currentStatus ? 'activated' : 'deactivated'} successfully`,
-            });
+            showNotification(`Staff ${!currentStatus ? 'activated' : 'deactivated'} successfully`, 'success');
         } catch (error) {
             console.error('Error updating staff status:', error);
-            setMessage({ type: 'error', text: 'Failed to update staff status' });
+            showNotification('Failed to update staff status', 'error');
         }
     };
 
@@ -95,10 +109,10 @@ export default function AdminStaffPage() {
                 updatedAt: Timestamp.now(),
             });
             loadStaff();
-            setMessage({ type: 'success', text: 'Hourly rate updated successfully' });
+            showNotification('Hourly rate updated successfully', 'success');
         } catch (error) {
             console.error('Error updating hourly rate:', error);
-            setMessage({ type: 'error', text: 'Failed to update hourly rate' });
+            showNotification('Failed to update hourly rate', 'error');
         }
     };
 
@@ -108,38 +122,31 @@ export default function AdminStaffPage() {
                 {/* Header */}
                 <header className="bg-white shadow-sm border-b">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                        <div>
-                            <button
-                                onClick={() => router.push('/dashboard')}
-                                className="text-blue-600 hover:text-blue-700 text-sm font-medium mb-2"
-                            >
-                                ← Back to Dashboard
-                            </button>
-                            <h1 className="text-2xl font-bold text-gray-900">Staff Management</h1>
-                            <p className="text-sm text-gray-600">Create and manage staff accounts</p>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <Logo width={100} height={35} />
+                                <div className="border-l pl-4">
+                                    <button
+                                        onClick={() => router.push('/dashboard')}
+                                        className="text-blue-600 hover:text-blue-700 text-sm font-medium mb-1 block"
+                                    >
+                                        ← Back
+                                    </button>
+                                    <h1 className="text-xl font-bold text-gray-900">Staff Management</h1>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </header>
 
                 {/* Main Content */}
                 <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                    {/* Message */}
-                    {message && (
-                        <div
-                            className={`mb-6 px-4 py-3 rounded-lg ${message.type === 'success'
-                                    ? 'bg-green-50 border border-green-200 text-green-700'
-                                    : 'bg-red-50 border border-red-200 text-red-700'
-                                }`}
-                        >
-                            {message.text}
-                        </div>
-                    )}
 
                     {/* Create Staff Button */}
                     <div className="mb-6">
                         <button
                             onClick={() => setShowCreateForm(!showCreateForm)}
-                            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition"
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition"
                         >
                             {showCreateForm ? 'Cancel' : '+ Create New Staff'}
                         </button>
@@ -160,17 +167,18 @@ export default function AdminStaffPage() {
                                             value={formData.name}
                                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                             required
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            className="input-base"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
                                         <input
-                                            type="email"
-                                            value={formData.email}
-                                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                            type="text"
+                                            value={formData.username}
+                                            onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                                             required
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            className="input-base"
+                                            placeholder="e.g. john_doe (No email needed)"
                                         />
                                     </div>
                                     <div>
@@ -183,7 +191,7 @@ export default function AdminStaffPage() {
                                             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                                             required
                                             minLength={6}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            className="input-base"
                                         />
                                     </div>
                                     <div>
@@ -192,20 +200,21 @@ export default function AdminStaffPage() {
                                         </label>
                                         <input
                                             type="number"
-                                            value={formData.hourlyRate}
-                                            onChange={(e) =>
-                                                setFormData({ ...formData, hourlyRate: parseFloat(e.target.value) })
-                                            }
+                                            value={isNaN(formData.hourlyRate) ? '' : formData.hourlyRate}
+                                            onChange={(e) => {
+                                                const value = parseFloat(e.target.value);
+                                                setFormData({ ...formData, hourlyRate: isNaN(value) ? 0 : value });
+                                            }}
                                             required
                                             min="0"
                                             step="0.01"
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            className="input-base"
                                         />
                                     </div>
                                 </div>
                                 <button
                                     type="submit"
-                                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition"
+                                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition"
                                 >
                                     Create Staff Account
                                 </button>
@@ -228,7 +237,7 @@ export default function AdminStaffPage() {
                                                 Name
                                             </th>
                                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                Email
+                                                Username
                                             </th>
                                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                 Hourly Rate
@@ -248,14 +257,19 @@ export default function AdminStaffPage() {
                                                     <div className="font-medium text-gray-900">{member.name}</div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="text-sm text-gray-600">{member.email}</div>
+                                                    <div className="text-sm text-gray-600">{member.username || member.email}</div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <input
                                                         type="number"
-                                                        value={member.hourlyRate}
-                                                        onChange={(e) => updateHourlyRate(member.id, parseFloat(e.target.value))}
-                                                        className="w-24 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                        value={isNaN(member.hourlyRate) ? '' : member.hourlyRate}
+                                                        onChange={(e) => {
+                                                            const value = parseFloat(e.target.value);
+                                                            if (!isNaN(value)) {
+                                                                updateHourlyRate(member.id, value);
+                                                            }
+                                                        }}
+                                                        className="w-24 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
                                                         step="0.01"
                                                         min="0"
                                                     />
@@ -263,8 +277,8 @@ export default function AdminStaffPage() {
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <span
                                                         className={`px-2 py-1 text-xs font-medium rounded-full ${member.isActive
-                                                                ? 'bg-green-100 text-green-700'
-                                                                : 'bg-red-100 text-red-700'
+                                                            ? 'bg-green-100 text-green-700'
+                                                            : 'bg-red-100 text-red-700'
                                                             }`}
                                                     >
                                                         {member.isActive ? 'Active' : 'Inactive'}
@@ -273,10 +287,7 @@ export default function AdminStaffPage() {
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <button
                                                         onClick={() => toggleStaffStatus(member.id, member.isActive)}
-                                                        className={`px-3 py-1 text-sm font-medium rounded-lg transition ${member.isActive
-                                                                ? 'text-red-600 hover:bg-red-50'
-                                                                : 'text-green-600 hover:bg-green-50'
-                                                            }`}
+                                                        className={member.isActive ? 'btn-ghost-danger' : 'btn-ghost-primary'}
                                                     >
                                                         {member.isActive ? 'Deactivate' : 'Activate'}
                                                     </button>
